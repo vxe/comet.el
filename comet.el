@@ -107,6 +107,44 @@ Note: Streaming support depends on the backend and model being used."
   :type 'boolean
   :group 'comet)
 
+(defcustom comet-language-alist
+  '((cider-repl-mode . "Clojure")
+    (clojure-mode . "Clojure")
+    (sly-mrepl-mode . "Common Lisp")
+    (slime-repl-mode . "Common Lisp")
+    (lisp-mode . "Common Lisp")
+    (ielm-mode . "Emacs Lisp")
+    (emacs-lisp-mode . "Emacs Lisp")
+    (inferior-python-mode . "Python")
+    (python-mode . "Python")
+    (shell-mode . "Shell/Bash")
+    (sh-mode . "Shell/Bash")
+    (eshell-mode . "Shell/Bash")
+    (geiser-repl-mode . "Scheme")
+    (scheme-mode . "Scheme")
+    (racket-repl-mode . "Racket")
+    (racket-mode . "Racket")
+    (sql-interactive-mode . "SQL")
+    (sql-mode . "SQL")
+    (ruby-mode . "Ruby")
+    (inf-ruby-mode . "Ruby")
+    (haskell-interactive-mode . "Haskell")
+    (haskell-mode . "Haskell")
+    (erlang-shell-mode . "Erlang")
+    (erlang-mode . "Erlang")
+    (elixir-mode . "Elixir")
+    (alchemist-iex-mode . "Elixir")
+    (js-comint-mode . "JavaScript")
+    (js-mode . "JavaScript")
+    (typescript-mode . "TypeScript")
+    (lua-mode . "Lua"))
+  "Alist mapping major modes to programming language names.
+Used to provide language context to the LLM.  You can add custom
+associations using `comet-register-language' or by customizing
+this variable directly."
+  :type '(alist :key-type symbol :value-type string)
+  :group 'comet)
+
 ;;; Provider Registry
 
 (defconst comet-provider-registry
@@ -224,6 +262,55 @@ This is automatically called when entering a REPL mode."
                                              :response response
                                              :timestamp (current-time))))))))
 
+;;; Language Detection
+
+(defun comet--detect-language ()
+  "Detect the programming language for the current buffer.
+Returns the language name string, or nil if unknown."
+  (or (cdr (assq major-mode comet-language-alist))
+      ;; Try parent modes
+      (when (boundp 'major-mode)
+        (let ((parent (get major-mode 'derived-mode-parent)))
+          (when parent
+            (cdr (assq parent comet-language-alist)))))))
+
+(defun comet--get-system-message ()
+  "Get the system message with language context if available."
+  (let ((language (comet--detect-language)))
+    (if language
+        (format "%s\n\nContext: You are assisting in a %s REPL environment."
+                comet-system-message language)
+      comet-system-message)))
+
+;;;###autoload
+(defun comet-register-language (mode-name language-name)
+  "Register a language association for a REPL mode.
+MODE-NAME is the major mode symbol (e.g., 'my-repl-mode).
+LANGUAGE-NAME is the human-readable language name (e.g., \"MyLang\").
+
+This association will be saved via customize for future sessions."
+  (interactive
+   (list (intern (completing-read
+                  "REPL mode (without quotes): "
+                  nil nil nil nil nil
+                  (symbol-name major-mode)))
+         (read-string "Language name: ")))
+  (customize-save-variable
+   'comet-language-alist
+   (cons (cons mode-name language-name)
+         (assq-delete-all mode-name comet-language-alist)))
+  (message "Registered %s → %s (saved to custom-file)" mode-name language-name))
+
+;;;###autoload
+(defun comet-show-language ()
+  "Show the detected language for the current buffer."
+  (interactive)
+  (let ((language (comet--detect-language)))
+    (if language
+        (message "Detected language: %s (mode: %s)" language major-mode)
+      (message "No language detected for mode: %s. Use M-x comet-register-language to add one."
+               major-mode))))
+
 ;;; Backend Abstraction
 
 (defun comet--get-comment-prefix ()
@@ -242,7 +329,7 @@ This function handles the backend communication asynchronously."
    ((and (eq comet-default-backend 'gptel)
          (fboundp 'gptel-request))
     (gptel-request prompt
-                   :system comet-system-message
+                   :system (comet--get-system-message)
                    :stream comet-use-stream
                    :callback (lambda (response info)
                                (cond

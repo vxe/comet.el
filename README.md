@@ -8,6 +8,7 @@
 
 - 🎯 **Universal REPL Integration**: Works with any `comint`-based REPL mode
 - 🔀 **Smart Provider Switching**: Auto-discovers LLM providers from `~/.authinfo` and lets you switch with one command
+- 🗣️ **Language Detection**: Automatically detects your programming language and provides context to the LLM
 - 🧠 **Session Context**: Maintains conversation history per REPL buffer
 - 🔌 **Backend Agnostic**: Abstracted interface supports multiple LLM backends (GPTEL, Claude API, etc.)
 - ⌨️ **Flexible Input Modes**: Insert as comment, raw text, or evaluate directly
@@ -190,6 +191,7 @@ See [gptel authinfo documentation](https://github.com/karthink/gptel#optional-se
 |----------|---------|-------------|
 | `comet-default-backend` | `'gptel` | LLM backend to use |
 | `comet-system-message` | (predefined) | System prompt for the LLM |
+| `comet-language-alist` | (predefined) | Mode → language name mappings |
 | `comet-insert-separator` | `t` | Insert separator before responses |
 | `comet-use-stream` | `nil` | Enable streaming responses |
 | `comet-comment-prefix-alist` | (predefined) | Mode-specific comment prefixes |
@@ -205,6 +207,8 @@ See [gptel authinfo documentation](https://github.com/karthink/gptel#optional-se
 | `comet-continue` | `C-c C-c` | Continue previous conversation |
 | `comet-clear-session` | `C-c C-k` | Clear session history |
 | `comet-show-session-history` | — | View conversation history |
+| `comet-register-language` | — | Register language for current REPL |
+| `comet-show-language` | — | Show detected language |
 
 ### Switching Providers
 
@@ -232,6 +236,55 @@ C-c C-s  → Shows: [OpenAI, Anthropic, Groq]
 - **Ollama** (Local models - no API key needed)
 
 The switcher automatically registers backends if they're not already configured!
+
+### Language Detection
+
+Comet automatically detects the programming language you're working with and provides that context to the LLM for better, more relevant responses.
+
+**Supported Languages Out of the Box:**
+- **Lisp Family**: Clojure (CIDER), Common Lisp (SLY/SLIME), Emacs Lisp (IELM), Scheme (Geiser), Racket
+- **Python**: `inferior-python-mode`
+- **Shell**: bash, sh, eshell
+- **Ruby**: `inf-ruby-mode`
+- **Haskell**: `haskell-interactive-mode`
+- **JavaScript/TypeScript**: `js-comint-mode`
+- **SQL**: `sql-interactive-mode`
+- **Erlang/Elixir**: Erlang shell, Alchemist IEx
+- **And more...** (see `comet-language-alist`)
+
+**Check Current Language:**
+```elisp
+M-x comet-show-language
+→ "Detected language: Clojure (mode: cider-repl-mode)"
+```
+
+**Register a New Language:**
+
+If you're using a REPL that Comet doesn't recognize, you can register it:
+
+1. Open your REPL buffer
+2. Run `M-x comet-register-language`
+3. Enter the mode name (defaults to current mode)
+4. Enter the language name (e.g., "MyLang")
+5. The association is **saved permanently** via customize
+
+**Example:**
+```elisp
+M-x comet-register-language
+  REPL mode: my-custom-repl-mode
+  Language name: MyCustomLang
+→ "Registered my-custom-repl-mode → MyCustomLang (saved to custom-file)"
+```
+
+From now on, whenever you use Comet in `my-custom-repl-mode`, the LLM will know you're working with MyCustomLang!
+
+**Manual Configuration:**
+
+You can also add language associations directly in your config:
+
+```elisp
+(add-to-list 'comet-language-alist '(my-repl-mode . "MyLanguage"))
+```
 
 ### Prefix Arguments
 
