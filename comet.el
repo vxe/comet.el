@@ -306,8 +306,22 @@ Returns the language name string, or nil if unknown."
   "Get the system message with language context if available."
   (let ((language (comet--detect-language)))
     (if language
-        (format "%s\n\nContext: You are assisting in a %s REPL environment."
-                comet-system-message language)
+        (format "%s
+
+IMPORTANT: You are assisting in a %s REPL environment.
+
+Rules:
+1. Output ONLY %s code unless explicitly asked otherwise
+2. Use %s syntax, idioms, and best practices
+3. Provide code that can be directly evaluated in the %s REPL
+4. Keep responses concise and REPL-friendly
+5. Use %s-appropriate libraries and functions"
+                comet-system-message
+                language
+                language
+                language
+                language
+                language)
       comet-system-message)))
 
 ;;;###autoload

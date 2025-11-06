@@ -239,7 +239,15 @@ The switcher automatically registers backends if they're not already configured!
 
 ### Language Detection
 
-Comet automatically detects the programming language you're working with and provides that context to the LLM for better, more relevant responses.
+Comet automatically detects the programming language you're working with and **instructs the LLM to output ONLY code in that language**. This ensures you get language-appropriate, REPL-ready responses.
+
+**What This Means:**
+- In a **Clojure REPL**: LLM outputs Clojure code, uses Clojure idioms, suggests Clojure libraries
+- In a **Python REPL**: LLM outputs Python code, uses Python syntax, suggests Python packages
+- In a **Shell**: LLM outputs shell commands, uses bash/sh syntax
+- And so on for every supported language!
+
+The LLM is explicitly instructed to respect the language context and provide code that can be directly evaluated in your REPL.
 
 **Supported Languages Out of the Box:**
 - **Lisp Family**: Clojure (CIDER), Common Lisp (SLY/SLIME), Emacs Lisp (IELM), Scheme (Geiser), Racket
