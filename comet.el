@@ -32,6 +32,9 @@
 
 (require 'comint)
 
+;;; External declarations (for byte-compiler)
+(declare-function gptel-request "gptel" (prompt &rest args))
+
 ;;; Customization
 
 (defgroup comet nil
@@ -68,6 +71,21 @@ Supported values: 'gptel, 'claude-api (extensible)."
     (default . "#"))
   "Alist mapping major modes to their comment prefixes."
   :type '(alist :key-type symbol :value-type string)
+  :group 'comet)
+
+(defcustom comet-system-message
+  "You are a helpful AI assistant integrated into a REPL environment. \
+Provide concise, accurate code snippets and explanations suitable for \
+immediate use in the REPL. Focus on practical, executable solutions."
+  "System message sent to the LLM backend with each Comet request."
+  :type 'string
+  :group 'comet)
+
+(defcustom comet-use-stream nil
+  "Whether to stream responses from the LLM backend.
+If non-nil, responses will be streamed as they are generated.
+Note: Streaming support depends on the backend and model being used."
+  :type 'boolean
   :group 'comet)
 
 ;;; Session Context
@@ -108,29 +126,36 @@ This is automatically called when entering a REPL mode."
 
 (defun comet--send-to-backend (prompt callback)
   "Send PROMPT to the configured AI backend and call CALLBACK with its response.
-The CALLBACK function should accept one argument: the response string."
+The CALLBACK function should accept one argument: the response string.
+
+This function handles the backend communication asynchronously."
   (cond
    ;; GPTEL backend
    ((and (eq comet-default-backend 'gptel)
          (fboundp 'gptel-request))
     (gptel-request prompt
+                   :system comet-system-message
+                   :stream comet-use-stream
                    :callback (lambda (response info)
-                              (if response
-                                  (funcall callback (string-trim response))
-                                (message "Comet: No response from GPTEL backend")))))
-
-   ;; Fallback for older gptel-send
-   ((and (eq comet-default-backend 'gptel)
-         (fboundp 'gptel-send))
-    (gptel-send prompt :callback callback))
+                               (cond
+                                ;; Successful response
+                                ((stringp response)
+                                 (funcall callback (string-trim response)))
+                                ;; Request was aborted
+                                ((eq response 'abort)
+                                 (message "Comet: Request aborted"))
+                                ;; Error or no response
+                                (t
+                                 (message "Comet: Request failed - %s"
+                                          (or (plist-get info :status) "Unknown error")))))))
 
    ;; Claude API backend (placeholder for future implementation)
    ((eq comet-default-backend 'claude-api)
-    (error "Claude API backend not yet implemented. Please use GPTEL or implement a custom backend."))
+    (error "Claude API backend not yet implemented. Please use GPTEL or implement a custom backend"))
 
    ;; No supported backend found
    (t
-    (error "No supported AI backend found. Please install GPTEL or configure comet-default-backend."))))
+    (error "No supported AI backend found. Please install GPTEL or configure comet-default-backend"))))
 
 (defun comet-select-backend ()
   "Interactively select the AI backend to use for Comet queries."

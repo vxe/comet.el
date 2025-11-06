@@ -46,8 +46,9 @@
 Comet requires an LLM backend. Currently, **GPTEL** is the primary supported backend:
 
 ```elisp
-;; Install GPTEL first
+;; Install GPTEL first (available on NonGNU ELPA)
 (use-package gptel
+  :ensure t
   :config
   (setq gptel-model "gpt-4-turbo"
         gptel-api-key "your-api-key-here"))
@@ -56,18 +57,37 @@ Comet requires an LLM backend. Currently, **GPTEL** is the primary supported bac
 (setq comet-default-backend 'gptel)
 ```
 
+**Note**: Comet uses the `gptel-request` API, which is the programmatic interface for GPTEL. Make sure you have GPTEL properly configured with your API key before using Comet.
+
 ### Customization Options
 
 ```elisp
+;; Backend selection
+(setq comet-default-backend 'gptel)  ; Default: 'gptel
+
+;; System message sent to the LLM
+(setq comet-system-message
+      "You are a helpful AI assistant for a REPL environment.")
+
 ;; Comment formatting
-(setq comet-insert-separator t)  ; Add separator before responses
+(setq comet-insert-separator t)  ; Add separator line before responses
+
+;; Enable streaming responses (if supported by backend)
+(setq comet-use-stream nil)      ; Default: nil
 
 ;; Custom comment prefixes for specific modes
 (add-to-list 'comet-comment-prefix-alist '(my-custom-mode . "//"))
-
-;; Change default backend
-(setq comet-default-backend 'gptel)
 ```
+
+#### Available Customization Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `comet-default-backend` | `'gptel` | LLM backend to use |
+| `comet-system-message` | (predefined) | System prompt for the LLM |
+| `comet-insert-separator` | `t` | Insert separator before responses |
+| `comet-use-stream` | `nil` | Enable streaming responses |
+| `comet-comment-prefix-alist` | (predefined) | Mode-specific comment prefixes |
 
 ## 🚀 Usage
 
@@ -160,6 +180,24 @@ The `comet--send-to-backend` function provides a clean interface for LLM backend
 (defun comet--send-to-backend (prompt callback)
   "Send PROMPT to backend and call CALLBACK with response.")
 ```
+
+#### GPTEL Integration
+
+Comet uses GPTEL's programmatic `gptel-request` API:
+
+```elisp
+(gptel-request prompt
+  :system comet-system-message
+  :stream comet-use-stream
+  :callback (lambda (response info)
+              ;; response is a string if successful
+              ;; info is a plist with :status, :buffer, etc.
+              ...))
+```
+
+The callback receives:
+- `response`: String (success), `nil` (error), or `'abort` (aborted)
+- `info`: Plist with `:status`, `:buffer`, `:position`, `:context`
 
 This design allows easy extension to support:
 - Claude API
