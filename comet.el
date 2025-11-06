@@ -40,9 +40,19 @@
 ;;; Code:
 
 (require 'comint)
+(require 'auth-source)
+(require 'cl-lib)
 
 ;;; External declarations (for byte-compiler)
 (declare-function gptel-request "gptel" (prompt &rest args))
+(declare-function gptel-make-openai "gptel-openai" (name &rest args))
+(declare-function gptel-make-anthropic "gptel-anthropic" (name &rest args))
+(declare-function gptel-make-ollama "gptel-ollama" (name &rest args))
+(declare-function gptel-make-gemini "gptel-gemini" (name &rest args))
+(declare-function gptel-make-groq "gptel-openai" (name &rest args))
+(defvar gptel-backend)
+(defvar gptel-model)
+(defvar gptel--known-backends)
 
 ;;; Customization
 
@@ -96,6 +106,95 @@ If non-nil, responses will be streamed as they are generated.
 Note: Streaming support depends on the backend and model being used."
   :type 'boolean
   :group 'comet)
+
+;;; Provider Registry
+
+(defconst comet-provider-registry
+  '(("api.openai.com"
+     :name "OpenAI"
+     :type openai
+     :make-fn gptel-make-openai
+     :models (gpt-4o gpt-4o-mini gpt-4-turbo gpt-3.5-turbo))
+    ("api.anthropic.com"
+     :name "Anthropic"
+     :type anthropic
+     :make-fn gptel-make-anthropic
+     :models (claude-3-5-sonnet-20241022 claude-3-5-haiku-20241022
+              claude-3-opus-20240229 claude-3-sonnet-20240229))
+    ("api.groq.com"
+     :name "Groq"
+     :type groq
+     :make-fn gptel-make-groq
+     :models (llama-3.3-70b-versatile llama-3.1-8b-instant
+              mixtral-8x7b-32768 gemma2-9b-it))
+    ("generativelanguage.googleapis.com"
+     :name "Gemini"
+     :type gemini
+     :make-fn gptel-make-gemini
+     :models (gemini-1.5-flash gemini-1.5-pro gemini-2.0-flash-exp))
+    ("localhost:11434"
+     :name "Ollama"
+     :type ollama
+     :make-fn gptel-make-ollama
+     :local t
+     :models nil))
+  "Registry of known LLM providers and their configuration.
+Each entry is (HOSTNAME PLIST) where PLIST contains:
+  :name - Display name for the provider
+  :type - Provider type symbol
+  :make-fn - Function to create the backend
+  :models - List of available model symbols
+  :local - t if this is a local service (no auth required)")
+
+(defun comet--find-authinfo-providers ()
+  "Find LLM providers that have API keys configured in authinfo.
+Returns a list of plists with :host, :name, :type, and :key."
+  (let ((providers nil))
+    (dolist (entry comet-provider-registry)
+      (let* ((host (car entry))
+             (info (cdr entry))
+             (local-p (plist-get info :local)))
+        ;; For local services, check if accessible; for others, check authinfo
+        (when (or local-p
+                  (auth-source-search :host host :require '(:secret) :max 1))
+          (push (list :host host
+                      :name (plist-get info :name)
+                      :type (plist-get info :type)
+                      :make-fn (plist-get info :make-fn)
+                      :models (plist-get info :models)
+                      :local local-p)
+                providers))))
+    (nreverse providers)))
+
+(defun comet--ensure-backend-registered (provider-info)
+  "Ensure a backend is registered for PROVIDER-INFO.
+If not already registered, create and register it.
+Returns the backend name."
+  (let* ((name (plist-get provider-info :name))
+         (type (plist-get provider-info :type))
+         (make-fn (plist-get provider-info :make-fn))
+         (models (plist-get provider-info :models))
+         (local-p (plist-get provider-info :local)))
+
+    ;; Check if backend already exists
+    (unless (and (boundp 'gptel--known-backends)
+                 (assoc name gptel--known-backends))
+      ;; Register the backend
+      (require (intern (format "gptel-%s" type)) nil t)
+      (when (fboundp make-fn)
+        (cond
+         ;; Ollama (local, no key needed)
+         ((eq type 'ollama)
+          (funcall make-fn name
+                   :host (plist-get provider-info :host)
+                   :stream t
+                   :models (or models '(mistral:latest llama3:latest))))
+         ;; Cloud providers (use authinfo key)
+         (t
+          (funcall make-fn name
+                   :stream t
+                   :key 'gptel-api-key-from-auth-source)))))
+    name))
 
 ;;; Session Context
 
@@ -166,16 +265,55 @@ This function handles the backend communication asynchronously."
    (t
     (error "No supported AI backend found. Please install GPTEL or configure comet-default-backend"))))
 
-(defun comet-select-backend ()
-  "Interactively select the AI backend to use for Comet queries."
+;;;###autoload
+(defun comet-switch-provider ()
+  "Switch LLM provider based on what's available in authinfo.
+Automatically discovers providers with API keys in ~/.authinfo,
+shows them in a completing-read menu, and switches to the selected
+provider for all subsequent Comet interactions."
   (interactive)
-  (let ((backends '(gptel claude-api)))
-    (setq comet-default-backend
-          (intern (completing-read "Select Comet backend: "
-                                   (mapcar #'symbol-name backends)
-                                   nil t nil nil
-                                   (symbol-name comet-default-backend))))
-    (message "Comet backend set to: %s" comet-default-backend)))
+  (let* ((available-providers (comet--find-authinfo-providers))
+         (provider-names (mapcar (lambda (p) (plist-get p :name))
+                                available-providers)))
+    (if (null available-providers)
+        (user-error "No LLM providers found in authinfo.
+Please add API keys to ~/.authinfo. See M-x describe-variable RET comet-provider-registry")
+      ;; Let user select provider
+      (let* ((selected-name (completing-read
+                            "Select LLM provider: "
+                            provider-names nil t))
+             (provider-info (cl-find-if
+                            (lambda (p) (string= (plist-get p :name) selected-name))
+                            available-providers))
+             (backend-name (comet--ensure-backend-registered provider-info))
+             (models (plist-get provider-info :models)))
+
+        ;; Now select model from the provider
+        (when models
+          (let* ((current-model (and (boundp 'gptel-model) gptel-model))
+                 (model-names (mapcar #'symbol-name models))
+                 (default-model (if (memq current-model models)
+                                   (symbol-name current-model)
+                                 (car model-names)))
+                 (selected-model (intern
+                                 (completing-read
+                                  (format "Select %s model: " selected-name)
+                                  model-names nil t nil nil default-model))))
+            ;; Set the backend and model globally
+            (when (boundp 'gptel-backend)
+              (setq gptel-backend
+                    (alist-get backend-name gptel--known-backends nil nil #'equal)))
+            (when (boundp 'gptel-model)
+              (setq gptel-model selected-model))
+
+            (message "Comet switched to %s (%s)" selected-name selected-model)))
+
+        ;; For local providers without predefined models
+        (unless models
+          (when (boundp 'gptel-backend)
+            (setq gptel-backend
+                  (alist-get backend-name gptel--known-backends nil nil #'equal)))
+          (message "Comet switched to %s" selected-name))))))
 
 ;;; Core Functions
 
@@ -303,6 +441,7 @@ PREFIX-ARG controls how the response is inserted:
     (define-key map (kbd "C-c C-a") #'comet-send-prompt)
     (define-key map (kbd "C-c C-c") #'comet-continue)
     (define-key map (kbd "C-c C-k") #'comet-clear-session)
+    (define-key map (kbd "C-c C-s") #'comet-switch-provider)
     map)
   "Keymap for Comet commands.")
 

@@ -7,6 +7,7 @@
 ## ✨ Features
 
 - 🎯 **Universal REPL Integration**: Works with any `comint`-based REPL mode
+- 🔀 **Smart Provider Switching**: Auto-discovers LLM providers from `~/.authinfo` and lets you switch with one command
 - 🧠 **Session Context**: Maintains conversation history per REPL buffer
 - 🔌 **Backend Agnostic**: Abstracted interface supports multiple LLM backends (GPTEL, Claude API, etc.)
 - ⌨️ **Flexible Input Modes**: Insert as comment, raw text, or evaluate directly
@@ -20,9 +21,10 @@
    M-x package-install RET gptel RET
    ```
 
-2. **Set up API key in `~/.authinfo`**:
+2. **Set up API keys in `~/.authinfo`** (add one or more providers):
    ```authinfo
    machine api.openai.com login apikey password YOUR-OPENAI-API-KEY-HERE
+   machine api.anthropic.com login apikey password YOUR-ANTHROPIC-KEY-HERE
    ```
 
 3. **Install Comet** (manual for now):
@@ -39,6 +41,7 @@
 5. **Use in any REPL**:
    - Start your REPL (e.g., `M-x cider-jack-in`, `M-x shell`)
    - Press `C-c C-a` and type your prompt!
+   - Press `C-c C-s` to switch providers anytime!
 
 ## 📦 Installation
 
@@ -198,10 +201,37 @@ See [gptel authinfo documentation](https://github.com/karthink/gptel#optional-se
 | Command | Keybinding | Description |
 |---------|-----------|-------------|
 | `comet-send-prompt` | `C-c C-a` | Send a prompt to the LLM |
+| `comet-switch-provider` | `C-c C-s` | **Switch LLM provider/model** |
 | `comet-continue` | `C-c C-c` | Continue previous conversation |
 | `comet-clear-session` | `C-c C-k` | Clear session history |
 | `comet-show-session-history` | — | View conversation history |
-| `comet-select-backend` | — | Switch LLM backend |
+
+### Switching Providers
+
+**`comet-switch-provider` (`C-c C-s`)** is the easiest way to change your LLM provider:
+
+1. **Auto-discovers** providers you have configured in `~/.authinfo`
+2. Shows a **completing-read menu** with available providers
+3. Lets you select a **specific model** from that provider
+4. **Persists the selection** for all subsequent Comet interactions
+
+**Example:**
+```
+C-c C-s  → Shows: [OpenAI, Anthropic, Groq]
+         → Select: Anthropic
+         → Shows: [claude-3-5-sonnet-20241022, claude-3-5-haiku-20241022, ...]
+         → Select: claude-3-5-sonnet-20241022
+         → Message: "Comet switched to Anthropic (claude-3-5-sonnet-20241022)"
+```
+
+**Supported Providers:**
+- **OpenAI** (GPT-4, GPT-3.5)
+- **Anthropic** (Claude 3.5 Sonnet, Claude 3 Opus)
+- **Groq** (Llama 3, Mixtral, Gemma)
+- **Gemini** (Gemini 1.5 Flash/Pro, 2.0 Flash)
+- **Ollama** (Local models - no API key needed)
+
+The switcher automatically registers backends if they're not already configured!
 
 ### Prefix Arguments
 
