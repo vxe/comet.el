@@ -13,6 +13,33 @@
 - 📝 **Smart Comment Formatting**: Auto-detects language-appropriate comment syntax
 - 🔄 **Conversation Continuity**: Continue previous discussions with follow-up prompts
 
+## ⚡ Quick Start
+
+1. **Install gptel** (if not already installed):
+   ```elisp
+   M-x package-install RET gptel RET
+   ```
+
+2. **Set up API key in `~/.authinfo`**:
+   ```authinfo
+   machine api.openai.com login apikey password YOUR-OPENAI-API-KEY-HERE
+   ```
+
+3. **Install Comet** (manual for now):
+   ```bash
+   git clone https://github.com/yourusername/comet.el.git
+   ```
+
+4. **Load Comet**:
+   ```elisp
+   (add-to-list 'load-path "/path/to/comet.el")
+   (require 'comet)
+   ```
+
+5. **Use in any REPL**:
+   - Start your REPL (e.g., `M-x cider-jack-in`, `M-x shell`)
+   - Press `C-c C-a` and type your prompt!
+
 ## 📦 Installation
 
 ### Manual Installation
@@ -43,21 +70,96 @@
 
 ### Backend Setup
 
-Comet requires an LLM backend. Currently, **GPTEL** is the primary supported backend:
+Comet requires an LLM backend. Currently, **GPTEL** is the primary supported backend.
+
+#### Step 1: Install GPTEL
 
 ```elisp
-;; Install GPTEL first (available on NonGNU ELPA)
+;; Install GPTEL (available on NonGNU ELPA)
+(use-package gptel
+  :ensure t)
+```
+
+#### Step 2: Configure API Keys (Recommended: `.authinfo`)
+
+Comet uses gptel's configuration, which **by default reads API keys from `~/.authinfo`** (the secure method).
+
+Add your API keys to `~/.authinfo`:
+
+```authinfo
+machine api.openai.com login apikey password YOUR-OPENAI-API-KEY-HERE
+machine api.anthropic.com login apikey password YOUR-ANTHROPIC-API-KEY-HERE
+```
+
+**Alternative**: Set API key directly in Emacs config (less secure):
+
+```elisp
 (use-package gptel
   :ensure t
   :config
-  (setq gptel-model "gpt-4-turbo"
-        gptel-api-key "your-api-key-here"))
-
-;; Configure Comet to use GPTEL
-(setq comet-default-backend 'gptel)
+  (setq gptel-api-key "your-api-key-here"))
 ```
 
-**Note**: Comet uses the `gptel-request` API, which is the programmatic interface for GPTEL. Make sure you have GPTEL properly configured with your API key before using Comet.
+#### Step 3: (Optional) Configure Backend
+
+ChatGPT (OpenAI) is configured by default. To use other backends:
+
+**Claude/Anthropic:**
+```elisp
+;; Register Claude backend
+(gptel-make-anthropic "Claude"
+  :stream t
+  :key 'gptel-api-key)  ; Uses authinfo by default
+
+;; Set as default for both gptel and Comet
+(setq gptel-backend (gptel-make-anthropic "Claude"
+                      :stream t
+                      :key 'gptel-api-key)
+      gptel-model 'claude-3-5-sonnet-20241022)
+```
+
+**Ollama (Local):**
+```elisp
+;; Set Ollama as default backend
+(setq gptel-backend (gptel-make-ollama "Ollama"
+                      :host "localhost:11434"
+                      :stream t
+                      :models '(mistral:latest llama3:latest))
+      gptel-model 'mistral:latest)
+```
+
+**Other backends**: See [gptel documentation](https://github.com/karthink/gptel#setup) for Gemini, Groq, Azure, local models, and more.
+
+**Note**: Comet uses the `gptel-request` API and inherits all gptel configuration (backends, models, API keys).
+
+### Security: Using `.authinfo` for API Keys
+
+Comet (via gptel) **reads API keys from `~/.authinfo` by default**. This is the recommended approach for security.
+
+#### Setting up `.authinfo`
+
+Create or edit `~/.authinfo` (or `~/.authinfo.gpg` for encryption):
+
+```authinfo
+machine api.openai.com login apikey password sk-proj-YOUR-KEY-HERE
+machine api.anthropic.com login apikey password sk-ant-YOUR-KEY-HERE
+```
+
+**Important**:
+- Set proper permissions: `chmod 600 ~/.authinfo`
+- For encryption: Use `~/.authinfo.gpg` (Emacs will decrypt automatically)
+- Each line format: `machine HOSTNAME login apikey password YOUR-API-KEY`
+
+#### Supported Providers
+
+| Provider | Hostname | Example |
+|----------|----------|---------|
+| OpenAI | `api.openai.com` | `machine api.openai.com login apikey password sk-proj-...` |
+| Anthropic | `api.anthropic.com` | `machine api.anthropic.com login apikey password sk-ant-...` |
+| Groq | `api.groq.com` | `machine api.groq.com login apikey password gsk_...` |
+| Ollama | (local) | No key needed |
+
+See [gptel authinfo documentation](https://github.com/karthink/gptel#optional-securing-api-keys-with-authinfo) for more providers.
 
 ### Customization Options
 

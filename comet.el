@@ -20,6 +20,12 @@
 ;; generate, or reason about code in context — without leaving your workflow
 ;; or dealing with language-specific syntax.
 ;;
+;; Setup:
+;;   1. Install gptel: M-x package-install RET gptel RET
+;;   2. Add API key to ~/.authinfo (recommended):
+;;        machine api.openai.com login apikey password YOUR-KEY-HERE
+;;   3. Load comet: (require 'comet)
+;;
 ;; Usage:
 ;;   M-x comet-send-prompt (or C-c C-a in supported REPL modes)
 ;;
@@ -27,6 +33,9 @@
 ;;   - No prefix → Insert as comment
 ;;   - C-u → Insert raw
 ;;   - C-u C-u → Send as REPL input (evaluate)
+;;
+;; Comet uses gptel's configuration, which by default reads API keys from
+;; ~/.authinfo.  This is the secure and recommended method for storing keys.
 
 ;;; Code:
 
