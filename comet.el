@@ -145,6 +145,34 @@ this variable directly."
   :type '(alist :key-type symbol :value-type string)
   :group 'comet)
 
+(defcustom comet-language-comment-alist
+  '(("Clojure" . ";;")
+    ("Common Lisp" . ";;")
+    ("Emacs Lisp" . ";;")
+    ("Scheme" . ";;")
+    ("Racket" . ";;")
+    ("Python" . "#")
+    ("Shell/Bash" . "#")
+    ("Ruby" . "#")
+    ("Perl" . "#")
+    ("Lua" . "--")
+    ("SQL" . "--")
+    ("Haskell" . "--")
+    ("Erlang" . "%")
+    ("Elixir" . "#")
+    ("JavaScript" . "//")
+    ("TypeScript" . "//")
+    ("Java" . "//")
+    ("C" . "//")
+    ("C++" . "//")
+    ("Go" . "//")
+    ("Rust" . "//"))
+  "Alist mapping language names to their comment prefixes.
+This is used to format LLM responses with appropriate comments.
+The language is detected via `comet-language-alist'."
+  :type '(alist :key-type string :value-type string)
+  :group 'comet)
+
 ;;; Provider Registry
 
 (defconst comet-provider-registry
@@ -314,10 +342,18 @@ This association will be saved via customize for future sessions."
 ;;; Backend Abstraction
 
 (defun comet--get-comment-prefix ()
-  "Get the appropriate comment prefix for the current major mode."
-  (or (cdr (assq major-mode comet-comment-prefix-alist))
-      (cdr (assq 'default comet-comment-prefix-alist))
-      "#"))
+  "Get the appropriate comment prefix based on detected language.
+Falls back to mode-based lookup, then to #."
+  (let ((language (comet--detect-language)))
+    (or
+     ;; First try language-based lookup
+     (when language
+       (cdr (assoc language comet-language-comment-alist)))
+     ;; Fallback to mode-based lookup (for backward compatibility)
+     (cdr (assq major-mode comet-comment-prefix-alist))
+     (cdr (assq 'default comet-comment-prefix-alist))
+     ;; Final fallback
+     "#")))
 
 (defun comet--send-to-backend (prompt callback)
   "Send PROMPT to the configured AI backend and call CALLBACK with its response.
